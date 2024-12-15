@@ -1,0 +1,136 @@
+<div class="page-container" [style.backgroundImage]="backgroundImage">
+  <div class="content-wrapper">
+    <!-- Left side - Form -->
+    <div class="form-section">
+      <div class="form-container">
+        <h2>Guest Checkout Management</h2>
+        <form [formGroup]="checkoutForm" (ngSubmit)="onSubmit()">
+          <div class="form-group">
+            <label for="guestName">Guest Name:</label>
+            <input id="guestName" type="text" formControlName="guestName">
+          </div>
+
+          <div class="form-group">
+            <label for="roomNumber">Room Number:</label>
+            <input id="roomNumber" type="text" formControlName="roomNumber">
+          </div>
+
+          <div class="checkbox-group">
+            <div class="checkbox-item">
+              <input id="miniBar" type="checkbox" formControlName="miniBar">
+              <label for="miniBar">Mini Bar Checked</label>
+            </div>
+
+            <div class="checkbox-item">
+              <input id="houseKeeping" type="checkbox" formControlName="houseKeeping">
+              <label for="houseKeeping">House Keeping Checked</label>
+            </div>
+
+            <div class="checkbox-item">
+              <input id="billPaid" type="checkbox" formControlName="billPaid">
+              <label for="billPaid">Bill Paid</label>
+            </div>
+
+            <div class="checkbox-item">
+              <input id="keyReturned" type="checkbox" formControlName="keyReturned">
+              <label for="keyReturned">Key Returned</label>
+            </div>
+          </div>
+
+          <button type="submit" [disabled]="!checkoutForm.valid">Complete Checkout</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Right side - Table -->
+    <div class="table-section">
+      <div class="table-container">
+        <div class="table-header">
+          <h3>Recent Checkouts</h3>
+          <div class="table-controls">
+            <div class="search-box">
+              <input 
+                type="text" 
+                [(ngModel)]="searchTerm" 
+                placeholder="Search guest or room..."
+                class="search-input"
+              >
+            </div>
+            <div class="filter-controls">
+              <button 
+                [class.active]="filterStatus === 'all'"
+                (click)="filterStatus = 'all'"
+                class="filter-btn"
+              >All</button>
+              <button 
+                [class.active]="filterStatus === 'completed'"
+                (click)="filterStatus = 'completed'"
+                class="filter-btn"
+              >Completed</button>
+              <button 
+                [class.active]="filterStatus === 'pending'"
+                (click)="filterStatus = 'pending'"
+                class="filter-btn"
+              >Pending</button>
+            </div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Guest Name</th>
+              <th>Room</th>
+              <th>Time</th>
+              <th>Mini Bar</th>
+              <th>Housekeeping</th>
+              <th>Bill</th>
+              <th>Key</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let record of filteredRecords">
+              <td>{{record.guestName}}</td>
+              <td>{{record.roomNumber}}</td>
+              <td>{{record.checkoutTime | date:'short'}}</td>
+              <td><span class="status-icon" [class.completed]="record.miniBar">✓</span></td>
+              <td><span class="status-icon" [class.completed]="record.houseKeeping">✓</span></td>
+              <td><span class="status-icon" [class.completed]="record.billPaid">✓</span></td>
+              <td><span class="status-icon" [class.completed]="record.keyReturned">✓</span></td>
+              <td class="status-cell">
+                <span class="status-badge" [class.completed]="record.status === 'Completed'">
+                  {{record.status}}
+                </span>
+                <button *ngIf="record.status === 'Pending'" 
+                        class="complete-button"
+                        (click)="completeCheckout(record)">
+                  Complete
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="pagination" *ngIf="totalPages > 1">
+          <button 
+            class="page-btn"
+            [disabled]="currentPage === 1"
+            (click)="changePage(currentPage - 1)"
+          >Previous</button>
+          
+          <button 
+            *ngFor="let page of [].constructor(totalPages); let i = index"
+            class="page-btn"
+            [class.active]="currentPage === i + 1"
+            (click)="changePage(i + 1)"
+          >{{ i + 1 }}</button>
+          
+          <button 
+            class="page-btn"
+            [disabled]="currentPage === totalPages"
+            (click)="changePage(currentPage + 1)"
+          >Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div> 
