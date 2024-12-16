@@ -35,9 +35,39 @@
               <input id="keyReturned" type="checkbox" formControlName="keyReturned">
               <label for="keyReturned">Key Returned</label>
             </div>
+
+            <div class="checkbox-item late-checkout">
+              <input id="isLateCheckout" type="checkbox" formControlName="isLateCheckout">
+              <label for="isLateCheckout">Late Checkout</label>
+            </div>
+
+            <!-- Late Checkout Time Selection -->
+            <div class="late-checkout-details" *ngIf="checkoutForm.get('isLateCheckout')?.value">
+              <div class="form-group time-select">
+                <label for="checkoutTime">Checkout Time:</label>
+                <input 
+                  id="checkoutTime" 
+                  type="datetime-local" 
+                  formControlName="checkoutTime"
+                  class="time-input">
+              </div>
+              <div class="late-fee-notice">
+                <span class="warning-icon">⚠️</span>
+                <span>Late checkout fee of <span class="fee-amount">$50/hour</span> applies after 11:00 AM</span>
+              </div>
+            </div>
           </div>
 
-          <button type="submit" [disabled]="!checkoutForm.valid">Complete Checkout</button>
+          <div class="form-group">
+            <label for="priority">Priority Level:</label>
+            <select id="priority" formControlName="priority" class="priority-select">
+              <option *ngFor="let level of priorityLevels" [value]="level">
+                {{level}}
+              </option>
+            </select>
+          </div>
+
+          <button type="submit" class="submit-button">Submit Checkout</button>
         </form>
       </div>
     </div>
@@ -46,9 +76,15 @@
     <div class="table-section">
       <div class="table-container">
         <div class="table-header">
-          <h3>Recent Checkouts</h3>
-          <div class="table-controls">
+          <div class="header-content">
+            <h3>Recent Checkouts</h3>
+            <span class="checkout-count">{{filteredRecords.length}} checkouts</span>
+          </div>
+
+          <div class="controls-wrapper">
+            <!-- Search Box -->
             <div class="search-box">
+              <span class="search-icon">🔍</span>
               <input 
                 type="text" 
                 [(ngModel)]="searchTerm" 
@@ -56,79 +92,118 @@
                 class="search-input"
               >
             </div>
+
+            <!-- Filter Controls -->
             <div class="filter-controls">
-              <button 
-                [class.active]="filterStatus === 'all'"
-                (click)="filterStatus = 'all'"
-                class="filter-btn"
-              >All</button>
-              <button 
-                [class.active]="filterStatus === 'completed'"
-                (click)="filterStatus = 'completed'"
-                class="filter-btn"
-              >Completed</button>
-              <button 
-                [class.active]="filterStatus === 'pending'"
-                (click)="filterStatus = 'pending'"
-                class="filter-btn"
-              >Pending</button>
+              <button class="filter-btn" [class.active]="filterStatus === 'all'" (click)="filterStatus = 'all'">All</button>
+              <button class="filter-btn" [class.active]="filterStatus === 'completed'" (click)="filterStatus = 'completed'">Completed</button>
+              <button class="filter-btn" [class.active]="filterStatus === 'pending'" (click)="filterStatus = 'pending'">Pending</button>
             </div>
           </div>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Guest Name</th>
-              <th>Room</th>
-              <th>Time</th>
-              <th>Mini Bar</th>
-              <th>Housekeeping</th>
-              <th>Bill</th>
-              <th>Key</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let record of filteredRecords">
-              <td>{{record.guestName}}</td>
-              <td>{{record.roomNumber}}</td>
-              <td>{{record.checkoutTime | date:'short'}}</td>
-              <td><span class="status-icon" [class.completed]="record.miniBar">✓</span></td>
-              <td><span class="status-icon" [class.completed]="record.houseKeeping">✓</span></td>
-              <td><span class="status-icon" [class.completed]="record.billPaid">✓</span></td>
-              <td><span class="status-icon" [class.completed]="record.keyReturned">✓</span></td>
-              <td class="status-cell">
-                <span class="status-badge" [class.completed]="record.status === 'Completed'">
-                  {{record.status}}
-                </span>
-                <button *ngIf="record.status === 'Pending'" 
-                        class="complete-button"
-                        (click)="completeCheckout(record)">
-                  Complete
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="pagination" *ngIf="totalPages > 1">
-          <button 
-            class="page-btn"
-            [disabled]="currentPage === 1"
-            (click)="changePage(currentPage - 1)"
-          >Previous</button>
+
+        <!-- Table Content -->
+        <div class="table-content">
+          <table *ngIf="!loading && !error && paginatedRecords.length > 0">
+            <thead>
+              <tr>
+                <th>Priority</th>
+                <th>Guest Name</th>
+                <th>Room</th>
+                <th>Time</th>
+                <th>Mini Bar</th>
+                <th>Housekeeping</th>
+                <th>Bill</th>
+                <th>Key</th>
+                <th>Late Checkout</th>
+                <th>Late Fee</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let record of paginatedRecords" 
+                  [class.vip-row]="record.priority === 'VIP'"
+                  [class.completed-row]="record.status === 'Completed'">
+                <td>
+                  <span class="priority-badge" [class]="getPriorityColor(record.priority)">
+                    {{record.priority}}
+                  </span>
+                </td>
+                <td>{{record.guestName}}</td>
+                <td>{{record.roomNumber}}</td>
+                <td>{{record.checkoutTime | date:'short'}}</td>
+                <td><span class="status-icon" [class.completed]="record.miniBar">✓</span></td>
+                <td><span class="status-icon" [class.completed]="record.houseKeeping">✓</span></td>
+                <td><span class="status-icon" [class.completed]="record.billPaid">✓</span></td>
+                <td><span class="status-icon" [class.completed]="record.keyReturned">✓</span></td>
+                <td>
+                  <span class="status-icon" [class.completed]="record.isLateCheckout">✓</span>
+                </td>
+                <td>
+                  <span *ngIf="record.lateFee" class="late-fee">
+                    ${{record.lateFee}}
+                  </span>
+                </td>
+                <td class="status-cell">
+                  <span class="status-badge" [class.completed]="record.status === 'Completed'">
+                    {{record.status}}
+                  </span>
+                  <button *ngIf="record.status === 'Pending'" 
+                          class="complete-button"
+                          (click)="completeCheckout(record)">
+                    Complete
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- States -->
+          <div *ngIf="loading" class="state-message loading">
+            <div class="spinner"></div>
+            <span>Loading checkouts...</span>
+          </div>
+
+          <div *ngIf="error" class="state-message error">
+            <span class="error-icon">⚠️</span>
+            <span>{{ error }}</span>
+          </div>
+
+          <div *ngIf="!loading && !error && paginatedRecords.length === 0" 
+               class="state-message empty">
+            <span class="empty-icon">📋</span>
+            <span>No checkouts found</span>
+          </div>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination-container" *ngIf="totalPages > 1">
+          <div class="pagination-info">
+            Showing {{(currentPage - 1) * itemsPerPage + 1}} - {{getMaxItems()}} of {{filteredRecords.length}}
+          </div>
           
-          <button 
-            *ngFor="let page of [].constructor(totalPages); let i = index"
-            class="page-btn"
-            [class.active]="currentPage === i + 1"
-            (click)="changePage(i + 1)"
-          >{{ i + 1 }}</button>
-          
-          <button 
-            class="page-btn"
-            [disabled]="currentPage === totalPages"
-            (click)="changePage(currentPage + 1)"
-          >Next</button>
+          <div class="pagination-controls">
+            <button 
+              class="page-btn prev"
+              [disabled]="currentPage === 1"
+              (click)="changePage(currentPage - 1)"
+            >Previous</button>
+
+            <div class="page-numbers">
+              <button 
+                *ngFor="let page of getPaginationRange()"
+                class="page-btn"
+                [class.active]="currentPage === page"
+                (click)="changePage(page)"
+              >{{ page }}</button>
+            </div>
+
+            <button 
+              class="page-btn next"
+              [disabled]="currentPage === totalPages"
+              (click)="changePage(currentPage + 1)"
+            >Next</button>
+          </div>
         </div>
       </div>
     </div>

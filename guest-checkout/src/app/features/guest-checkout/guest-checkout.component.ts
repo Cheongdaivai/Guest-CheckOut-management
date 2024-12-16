@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
-import { CheckoutForm, CheckoutRecord } from './models/checkout.interface';
+import { CheckoutForm, CheckoutRecord, PriorityLevel } from './models/checkout.interface';
 import { DomSanitizer, SafeStyle } from '@angular/platform-browser';
 import { CheckoutService } from '../../services/checkout.service';
 import { HttpClientModule } from '@angular/common/http';
@@ -26,6 +26,10 @@ export class GuestCheckoutComponent implements OnInit {
   filterStatus: 'all' | 'completed' | 'pending' = 'all';
   currentPage = 1;
   itemsPerPage = 5;
+  loading = false;
+  error: string | null = null;
+  priorityLevels: PriorityLevel[] = ['VIP', 'Superior', 'Classic'];
+  Math = Math;
 
   constructor(
     private fb: FormBuilder,
@@ -38,7 +42,10 @@ export class GuestCheckoutComponent implements OnInit {
       miniBar: [false],
       houseKeeping: [false],
       billPaid: [false],
-      keyReturned: [false]
+      keyReturned: [false],
+      isLateCheckout: [false],
+      checkoutTime: [''],
+      priority: ['Classic', Validators.required]
     });
     this.backgroundImage = this.sanitizer.bypassSecurityTrustStyle(
       'url("/assets/1040097-download-free-studio-ghibli-wallpaper-1920x1080-for-computer.jpg")'
@@ -46,28 +53,72 @@ export class GuestCheckoutComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    // In a real app, you would fetch this from a service
-    this.loadMockData();
+    this.loadCheckoutRecords();
+  }
+
+  loadCheckoutRecords(): void {
+    this.loading = true;
+    this.error = null;
+    
+    this.checkoutService.getCheckouts().subscribe({
+      next: (records) => {
+        this.checkoutRecords = records;
+        this.loading = false;
+      },
+      error: (error) => {
+        this.error = 'Failed to load checkout records. Please try again.';
+        this.loading = false;
+        console.error('Error loading checkout records:', error);
+      }
+    });
+  }
+
+  calculateLateFee(checkoutTime: Date): number {
+    const standardCheckoutTime = new Date(checkoutTime);
+    standardCheckoutTime.setHours(11, 0, 0); // Standard checkout time is 11:00 AM
+
+    if (checkoutTime > standardCheckoutTime) {
+      const hoursDiff = Math.ceil(
+        (checkoutTime.getTime() - standardCheckoutTime.getTime()) / (1000 * 60 * 60)
+      );
+      return hoursDiff * 50; // $50 per hour after 11:00 AM
+    }
+    return 0;
   }
 
   onSubmit(): void {
     if (this.checkoutForm.valid) {
-      const button = document.querySelector('button[type="submit"]');
-      button?.classList.add('success');
-      
       const formValue = this.checkoutForm.value;
-      const newRecord: CheckoutRecord = {
+      const checkoutTime = formValue.checkoutTime ? 
+        new Date(formValue.checkoutTime) : 
+        new Date();
+
+      const lateFee = formValue.isLateCheckout ? 
+        this.calculateLateFee(checkoutTime) : 
+        0;
+
+      const newCheckout = {
         ...formValue,
-        checkoutTime: new Date(),
-        status: this.isCheckoutComplete(formValue) ? 'Completed' : 'Pending'
+        checkoutTime,
+        status: 'Pending' as const,
+        lateFee,
+        priority: formValue.priority || 'Classic'
       };
-      
-      this.checkoutService.createCheckout(newRecord).subscribe(
-        checkout => {
-          this.checkoutRecords.unshift(checkout);
-          this.checkoutForm.reset();
+
+      console.log('Submitting checkout:', newCheckout);
+
+      this.checkoutService.createCheckout(newCheckout).subscribe({
+        next: (created) => {
+          console.log('Created checkout:', created);
+          this.checkoutRecords.unshift(created);
+          this.checkoutForm.reset({
+            priority: 'Classic'
+          });
+        },
+        error: (error) => {
+          console.error('Error creating checkout:', error);
         }
-      );
+      });
     }
   }
 
@@ -78,24 +129,25 @@ export class GuestCheckoutComponent implements OnInit {
            record.keyReturned;
   }
 
-  private loadMockData() {
-    this.checkoutService.getCheckouts().subscribe(
-      checkouts => this.checkoutRecords = checkouts
-    );
-  }
-
   completeCheckout(record: CheckoutRecord): void {
-    const index = this.checkoutRecords.indexOf(record);
-    if (index !== -1) {
-      this.checkoutRecords[index] = {
-        ...record,
-        status: 'Completed',
-        miniBar: true,
-        houseKeeping: true,
-        billPaid: true,
-        keyReturned: true
-      };
-    }
+    const updatedRecord = {
+      ...record,
+      status: 'Completed' as const
+    };
+
+    this.checkoutService.updateCheckout(record._id, updatedRecord).subscribe({
+      next: (updated) => {
+        // Update the local array with the new record
+        const index = this.checkoutRecords.findIndex(r => r._id === updated._id);
+        if (index !== -1) {
+          this.checkoutRecords[index] = updated;
+        }
+      },
+      error: (error) => {
+        console.error('Error updating checkout status:', error);
+        // Handle error appropriately (show user feedback)
+      }
+    });
   }
 
   get filteredRecords() {
@@ -108,7 +160,11 @@ export class GuestCheckoutComponent implements OnInit {
         this.filterStatus === 'all' ? true : 
         this.filterStatus === 'completed' ? record.status === 'Completed' : 
         record.status === 'Pending'
-      );
+      )
+      .sort((a, b) => {
+        const priorityOrder = { VIP: 0, Superior: 1, Classic: 2 };
+        return priorityOrder[a.priority] - priorityOrder[b.priority];
+      });
   }
 
   get paginatedRecords() {
@@ -122,5 +178,41 @@ export class GuestCheckoutComponent implements OnInit {
 
   changePage(page: number) {
     this.currentPage = page;
+  }
+
+  getPriorityColor(priority: PriorityLevel): string {
+    switch (priority) {
+      case 'VIP':
+        return 'priority-vip';
+      case 'Superior':
+        return 'priority-superior';
+      case 'Classic':
+        return 'priority-classic';
+      default:
+        return '';
+    }
+  }
+
+  getPaginationRange(): number[] {
+    const range: number[] = [];
+    const maxPages = 5; // Show max 5 page numbers
+    
+    let start = Math.max(1, this.currentPage - Math.floor(maxPages / 2));
+    let end = Math.min(this.totalPages, start + maxPages - 1);
+    
+    // Adjust start if we're near the end
+    if (end - start + 1 < maxPages) {
+      start = Math.max(1, end - maxPages + 1);
+    }
+    
+    for (let i = start; i <= end; i++) {
+      range.push(i);
+    }
+    
+    return range;
+  }
+
+  getMaxItems(): number {
+    return Math.min(this.currentPage * this.itemsPerPage, this.filteredRecords.length);
   }
 } 
